@@ -1,0 +1,241 @@
+import { useState } from "react";
+import { useParams, useLocation } from "wouter";
+import {
+  useGetField,
+  getGetFieldQueryKey,
+  useCreateBooking,
+  useCreateCheckoutSession,
+} from "@workspace/api-client-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MapPin, ArrowRight, CheckCircle, XCircle, Clock } from "lucide-react";
+import { motion } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
+
+const DURATION_OPTIONS = [
+  { key: "half_hour", label: "30 دقيقة", price: 5, desc: "مناسبة للتمرين السريع" },
+  { key: "one_hour", label: "ساعة كاملة", price: 9, desc: "الأكثر طلباً", popular: true },
+  { key: "three_hours", label: "3 ساعات", price: 24, desc: "مباراة مع الأصدقاء" },
+];
+
+export function FieldDetail() {
+  const params = useParams<{ id: string }>();
+  const id = parseInt(params.id ?? "0");
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const [selectedDuration, setSelectedDuration] = useState<string>("one_hour");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { data: field, isLoading: fieldLoading } = useGetField(id, {
+    query: { enabled: !!id, queryKey: getGetFieldQueryKey(id) },
+  });
+
+  const createBooking = useCreateBooking();
+  const createCheckout = useCreateCheckoutSession();
+
+  const selectedOption = DURATION_OPTIONS.find((d) => d.key === selectedDuration);
+
+  async function handleBooking() {
+    if (!customerName.trim() || !customerPhone.trim()) {
+      toast({ title: "خطأ", description: "يرجى إدخال الاسم ورقم الجوال", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const booking = await createBooking.mutateAsync({
+        data: {
+          fieldId: id,
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          durationKey: selectedDuration,
+        },
+      });
+
+      const checkout = await createCheckout.mutateAsync({ data: { bookingId: booking.id } });
+      window.location.href = checkout.url;
+    } catch (err: any) {
+      toast({
+        title: "حدث خطأ",
+        description: err?.data?.error ?? "تعذّر إتمام الحجز، يرجى المحاولة مجدداً",
+        variant: "destructive",
+      });
+      setIsSubmitting(false);
+    }
+  }
+
+  if (fieldLoading) {
+    return (
+      <div className="container mx-auto px-4 py-12">
+        <Skeleton className="h-80 w-full rounded-2xl mb-8" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-8 w-1/2" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+          <Skeleton className="h-96 rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!field) {
+    return (
+      <div className="container mx-auto px-4 py-24 text-center">
+        <XCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-2">الملعب غير موجود</h2>
+        <Button onClick={() => setLocation("/")} variant="outline">العودة للرئيسية</Button>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="container mx-auto px-4 py-8">
+
+      {/* Hero Image */}
+      <div className="relative h-72 md:h-96 rounded-2xl overflow-hidden mb-10">
+        <img src={field.imageUrl} alt={field.name} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+        <div className="absolute bottom-6 right-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold">{field.name}</h1>
+          <div className="flex items-center gap-2 mt-2 text-muted-foreground text-sm">
+            <MapPin className="w-4 h-4 text-primary" />
+            {field.location}
+          </div>
+        </div>
+        <button
+          onClick={() => setLocation("/")}
+          className="absolute top-4 left-4 bg-background/70 backdrop-blur border border-border rounded-full p-2 hover:bg-background transition-colors"
+        >
+          <ArrowRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        {/* Left: Info + Packages */}
+        <div className="lg:col-span-2 space-y-6">
+
+          {/* Description */}
+          <Card className="bg-card border-border">
+            <CardContent className="p-6">
+              <h2 className="text-lg font-bold mb-3">عن الملعب</h2>
+              <p className="text-muted-foreground leading-relaxed">{field.description}</p>
+            </CardContent>
+          </Card>
+
+          {/* Duration Packages */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary" />
+                اختر الباقة المناسبة
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {DURATION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setSelectedDuration(opt.key)}
+                  className={`relative rounded-2xl border-2 p-5 text-center transition-all text-right ${
+                    selectedDuration === opt.key
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50 hover:bg-secondary/50"
+                  }`}
+                >
+                  {opt.popular && (
+                    <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                      الأكثر طلباً
+                    </span>
+                  )}
+                  <div className={`text-3xl font-black mb-1 ${selectedDuration === opt.key ? "text-primary" : ""}`}>
+                    ${opt.price}
+                  </div>
+                  <div className="font-bold text-sm mb-1">{opt.label}</div>
+                  <div className="text-xs text-muted-foreground">{opt.desc}</div>
+                  {selectedDuration === opt.key && (
+                    <CheckCircle className="w-4 h-4 text-primary absolute top-3 left-3" />
+                  )}
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+
+        </div>
+
+        {/* Right: Booking Form */}
+        <div className="lg:col-span-1">
+          <Card className="bg-card border-border sticky top-24">
+            <CardHeader>
+              <CardTitle className="text-lg">أكمل الحجز</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Summary */}
+              <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 space-y-1">
+                <div className="text-sm font-medium text-primary flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  ملخص الحجز
+                </div>
+                <div className="text-muted-foreground text-sm">{field.name}</div>
+                <div className="text-sm text-muted-foreground">{selectedOption?.label}</div>
+                <div className="text-foreground font-black text-2xl pt-1">
+                  ${selectedOption?.price}
+                </div>
+              </div>
+
+              {/* Customer Info */}
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="customer-name" className="text-sm font-medium mb-1.5 block">
+                    اسمك الكامل
+                  </Label>
+                  <Input
+                    id="customer-name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="محمد أحمد"
+                    data-testid="input-customer-name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="customer-phone" className="text-sm font-medium mb-1.5 block">
+                    رقم الجوال
+                  </Label>
+                  <Input
+                    id="customer-phone"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="05XXXXXXXX"
+                    dir="ltr"
+                    data-testid="input-customer-phone"
+                  />
+                </div>
+              </div>
+
+              <Button
+                className="w-full h-12 text-base font-bold rounded-xl"
+                onClick={handleBooking}
+                disabled={!customerName.trim() || !customerPhone.trim() || isSubmitting}
+                data-testid="button-pay"
+              >
+                {isSubmitting ? "جاري التحويل للدفع..." : `ادفع الآن — $${selectedOption?.price}`}
+              </Button>
+
+              <p className="text-xs text-muted-foreground text-center">
+                ستُحوَّل إلى صفحة الدفع الآمنة عبر Stripe
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+      </div>
+    </motion.div>
+  );
+}
